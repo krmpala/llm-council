@@ -3,12 +3,16 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import CouncilBlockedPanel from './CouncilBlockedPanel';
+import { isCouncilBlockedMessage, shouldRenderCouncilStages } from '../councilUi';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   onSendMessage,
   onContinueCouncil,
+  onRetryChairman,
+  onRetryPeerEvaluations,
   isLoading,
 }) {
   const [input, setInput] = useState('');
@@ -31,7 +35,6 @@ export default function ChatInterface({
   };
 
   const handleKeyDown = (e) => {
-    // Submit on Enter (without Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -58,90 +61,97 @@ export default function ChatInterface({
             <p>Ask a question to consult the LLM Council</p>
           </div>
         ) : (
-          conversation.messages.map((msg, index) => (
-            <div key={index} className="message-group">
-              {msg.role === 'user' ? (
-                <div className="user-message">
-                  <div className="message-label">You</div>
-                  <div className="message-content">
-                    <div className="markdown-content">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+          conversation.messages.map((msg, index) => {
+            const summary = msg.metadata?.stage1_summary;
+            const isBlocked = msg.role === 'assistant' && isCouncilBlockedMessage(msg);
+            const canRenderStages = shouldRenderCouncilStages(msg);
+
+            return (
+              <div key={index} className="message-group">
+                {msg.role === 'user' ? (
+                  <div className="user-message">
+                    <div className="message-label">You</div>
+                    <div className="message-content">
+                      <div className="markdown-content">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="assistant-message">
-                  <div className="message-label">LLM Council</div>
+                ) : (
+                  <div className="assistant-message">
+                    <div className="message-label">LLM Council</div>
 
-                  {/* Stage 1 */}
-                  {msg.loading?.stage1 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 1: Collecting individual responses...</span>
-                    </div>
-                  )}
-                  {(msg.stage1 || msg.metadata?.stage1_statuses) && (
-                    <Stage1
-                      responses={msg.stage1 || []}
-                      statuses={msg.metadata?.stage1_statuses || []}
-                      summary={msg.metadata?.stage1_summary}
-                    />
-                  )}
+                    {msg.loading?.stage1 && (
+                      <div className="stage-loading">
+                        <div className="spinner"></div>
+                        <span>Running Stage 1: Collecting individual responses...</span>
+                      </div>
+                    )}
 
-                  {msg.needsContinue && (
-                    <div className="continue-panel">
-                      <p>{msg.continueMessage}</p>
-                      <button
-                        type="button"
-                        className="continue-button"
-                        onClick={() => onContinueCouncil(index)}
-                        disabled={isLoading}
-                      >
-                        Konseyi kalan üyelerle devam ettir
-                      </button>
-                    </div>
-                  )}
+                    {(msg.stage1 || msg.metadata?.stage1_statuses) && (
+                      <Stage1
+                        responses={msg.stage1 || []}
+                        statuses={msg.metadata?.stage1_statuses || []}
+                        summary={summary}
+                      />
+                    )}
 
-                  {msg.blockedMessage && (
-                    <div className="blocked-panel">
-                      {msg.blockedMessage}
-                    </div>
-                  )}
+                    {isBlocked && (
+                      <CouncilBlockedPanel
+                        summary={summary}
+                        statuses={msg.metadata?.stage1_statuses || []}
+                        onContinue={() => onContinueCouncil(index)}
+                        isLoading={isLoading}
+                      />
+                    )}
 
-                  {/* Stage 2 */}
-                  {msg.loading?.stage2 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 2: Peer rankings...</span>
-                    </div>
-                  )}
-                  {msg.stage2 && (
-                    <Stage2
-                      rankings={msg.stage2}
-                      labelToModel={msg.metadata?.label_to_model}
-                      aggregateRankings={msg.metadata?.aggregate_rankings}
-                    />
-                  )}
+                    {canRenderStages && msg.loading?.stage2 && (
+                      <div className="stage-loading">
+                        <div className="spinner"></div>
+                        <span>Running Stage 2: Peer rankings...</span>
+                      </div>
+                    )}
 
-                  {/* Stage 3 */}
-                  {msg.loading?.stage3 && (
-                    <div className="stage-loading">
-                      <div className="spinner"></div>
-                      <span>Running Stage 3: Final synthesis...</span>
-                    </div>
-                  )}
-                  {msg.stage3 && (
-                    <Stage3
-                      finalResponse={msg.stage3}
-                      stage1Responses={msg.stage1}
-                      stage2Rankings={msg.stage2}
-                      labelToModel={msg.metadata?.label_to_model}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          ))
+                    {canRenderStages && msg.stage2 && (
+                      <Stage2
+                        rankings={msg.stage2}
+                        labelToModel={msg.metadata?.label_to_model}
+                        aggregateRankings={msg.metadata?.aggregate_rankings}
+                        stage1Responses={msg.stage1 || []}
+                        peerStatuses={msg.metadata?.peer_evaluator_statuses || []}
+                        peerSummary={msg.metadata?.peer_stage_summary}
+                        onRetryPeerEvaluations={() => onRetryPeerEvaluations(index)}
+                      />
+                    )}
+
+                    {canRenderStages && msg.loading?.stage3 && (
+                      <div className="stage-loading">
+                        <div className="spinner"></div>
+                        <span>Running Stage 3: Final synthesis...</span>
+                      </div>
+                    )}
+
+                    {canRenderStages && msg.metadata?.user_override && (
+                      <div className="override-note">
+                        Konsey kullanıcı onayıyla {summary?.continued_with || msg.stage1?.length} üyeyle tamamlandı.
+                      </div>
+                    )}
+
+                    {canRenderStages && msg.stage3 && (
+                      <Stage3
+                        finalResponse={msg.stage3}
+                        stage1Responses={msg.stage1}
+                        stage2Rankings={msg.stage2}
+                        labelToModel={msg.metadata?.label_to_model}
+                        onRetryChairman={() => onRetryChairman(index)}
+                        isLoading={isLoading}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
 
         {isLoading && (

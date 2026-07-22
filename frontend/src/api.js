@@ -95,7 +95,14 @@ export const api = {
   /**
    * Continue a paused council run after failed members are acknowledged.
    */
-  async continueMessageStream(conversationId, content, stage1, stage1Statuses, onEvent) {
+  async continueMessageStream(
+    conversationId,
+    content,
+    stage1,
+    stage1Statuses,
+    constraints,
+    onEvent
+  ) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/continue/stream`,
       {
@@ -107,12 +114,61 @@ export const api = {
           content,
           stage1,
           stage1_statuses: stage1Statuses || [],
+          constraints: constraints || {},
         }),
       }
     );
 
     if (!response.ok) {
       throw new Error('Failed to continue council');
+    }
+
+    await readSseStream(response, onEvent);
+  },
+
+  async retryChairmanStream(conversationId, content, stage1, stage2, metadata, onEvent) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/chairman/retry/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content,
+          stage1,
+          stage2,
+          metadata: metadata || {},
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to retry chairman');
+    }
+
+    await readSseStream(response, onEvent);
+  },
+
+  async retryPeerEvaluationsStream(conversationId, content, stage1, stage2, metadata, onEvent) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/peer/retry/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content,
+          stage1,
+          stage2: stage2 || [],
+          metadata: metadata || {},
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to retry peer evaluations');
     }
 
     await readSseStream(response, onEvent);

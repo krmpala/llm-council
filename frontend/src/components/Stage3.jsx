@@ -1,14 +1,22 @@
 import ReactMarkdown from 'react-markdown';
 import { useState } from 'react';
-import { displayModelName } from '../councilUi';
+import {
+  chairmanErrorDetails,
+  displayModelName,
+  isChairmanFailed,
+  uniqueByMemberId,
+} from '../councilUi';
 import './Stage3.css';
 
-function deAnonymizeText(text, labelToModel) {
+function deAnonymizeText(text, labelToModel, responsesByMemberId) {
   if (!labelToModel) return text;
 
   let result = text;
-  Object.entries(labelToModel).forEach(([label, model]) => {
-    result = result.replace(new RegExp(label, 'g'), `**${displayModelName(model)}**`);
+  Object.entries(labelToModel).forEach(([label, memberId]) => {
+    result = result.replace(
+      new RegExp(label, 'g'),
+      `**${displayModelName(responsesByMemberId[memberId] || memberId)}**`
+    );
   });
   return result;
 }
@@ -18,8 +26,16 @@ export default function Stage3({
   stage1Responses = [],
   stage2Rankings = [],
   labelToModel,
+  onRetryChairman,
+  isLoading,
 }) {
   const [activeTab, setActiveTab] = useState('common');
+  const uniqueStage1Responses = uniqueByMemberId(stage1Responses, 'stage3 answers');
+  const uniqueStage2Rankings = uniqueByMemberId(stage2Rankings, 'stage3 reviews');
+  const responsesByMemberId = Object.fromEntries(
+    uniqueStage1Responses.map((response) => [response.member_id, response])
+  );
+  const chairmanError = chairmanErrorDetails(finalResponse);
 
   if (!finalResponse) {
     return null;
@@ -59,20 +75,47 @@ export default function Stage3({
             <div className="chairman-label">
               Chairman: {displayModelName(finalResponse)}
             </div>
-            <div className="final-text markdown-content">
-              <ReactMarkdown>{finalResponse.response}</ReactMarkdown>
-            </div>
+            {isChairmanFailed(finalResponse) ? (
+              <div className="chairman-error">
+                <strong>Başkan yanıtı üretilemedi.</strong>
+                <div>Aşama: {chairmanError.stage}</div>
+                {chairmanError.httpStatus && <div>HTTP: {chairmanError.httpStatus}</div>}
+                <div>Deneme: {chairmanError.attempts}</div>
+                {finalResponse.error_type && <div>Hata türü: {finalResponse.error_type}</div>}
+                <div>{chairmanError.message}</div>
+                <button
+                  type="button"
+                  className="retry-chairman-button"
+                  onClick={onRetryChairman}
+                  disabled={isLoading}
+                >
+                  Başkanı yeniden dene
+                </button>
+              </div>
+            ) : (
+              <>
+                {finalResponse.quality_warning && (
+                  <div className="quality-warning">{finalResponse.quality_warning}</div>
+                )}
+                <div className="final-text markdown-content">
+                  <ReactMarkdown>{finalResponse.response}</ReactMarkdown>
+                </div>
+              </>
+            )}
           </>
         )}
 
         {activeTab === 'answers' && (
           <div className="final-list">
-            {stage1Responses.length === 0 ? (
+            {uniqueStage1Responses.length === 0 ? (
               <p className="empty-tab">Ayrı cevap yok.</p>
             ) : (
-              stage1Responses.map((response) => (
-                <div key={response.model} className="final-list-item">
+              uniqueStage1Responses.map((response) => (
+                <div key={response.member_id} className="final-list-item">
                   <div className="final-list-title">{displayModelName(response)}</div>
+                  {response.truncated && (
+                    <div className="quality-warning">Yanıt token sınırında kesildi.</div>
+                  )}
                   <div className="markdown-content">
                     <ReactMarkdown>{response.response}</ReactMarkdown>
                   </div>
@@ -84,15 +127,19 @@ export default function Stage3({
 
         {activeTab === 'reviews' && (
           <div className="final-list">
-            {stage2Rankings.length === 0 ? (
+            {uniqueStage2Rankings.length === 0 ? (
               <p className="empty-tab">Değerlendirme yok.</p>
             ) : (
-              stage2Rankings.map((ranking) => (
-                <div key={ranking.model} className="final-list-item">
+              uniqueStage2Rankings.map((ranking) => (
+                <div key={ranking.member_id} className="final-list-item">
                   <div className="final-list-title">{displayModelName(ranking)}</div>
                   <div className="markdown-content">
                     <ReactMarkdown>
-                      {deAnonymizeText(ranking.ranking, labelToModel)}
+                      {deAnonymizeText(
+                        ranking.ranking,
+                        labelToModel,
+                        responsesByMemberId
+                      )}
                     </ReactMarkdown>
                   </div>
                 </div>

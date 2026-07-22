@@ -1,0 +1,77 @@
+{
+  "type": "object",
+  "properties": {
+    "cycle_status": {
+      "type": "string",
+      "enum": [
+        "progress",
+        "blocked",
+        "stable",
+        "failed"
+      ]
+    },
+    "phase": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "completed_tasks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "result"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "commit_sha": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_priority": {
+      "type": "string"
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_sleep_seconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 3600
+    }
+  },
+  "required": [
+    "cycle_status",
+    "phase",
+    "summary",
+    "completed_tasks",
+    "tests",
+    "commit_sha",
+    "next_priority",
+    "blockers",
+    "recommended_sleep_seconds"
+  ],
+  "additionalProperties": false
+}

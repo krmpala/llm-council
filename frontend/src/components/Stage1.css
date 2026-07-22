@@ -103,6 +103,13 @@
   line-height: 1.4;
 }
 
+.fallback-note {
+  margin-top: 4px;
+  color: #2a6fb3;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .minimum-warning {
   margin-top: 12px;
   padding: 12px;

@@ -131,7 +131,7 @@ def add_assistant_message(
     conversation_id: str,
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any],
+    stage3: Optional[Dict[str, Any]],
     metadata: Optional[Dict[str, Any]] = None
 ):
     """
@@ -157,6 +157,56 @@ def add_assistant_message(
     })
 
     save_conversation(conversation)
+
+
+def complete_pending_assistant_message(
+    conversation_id: str,
+    stage1: List[Dict[str, Any]],
+    stage2: List[Dict[str, Any]],
+    stage3: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Complete the latest assistant message waiting for user approval."""
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    for message in reversed(conversation["messages"]):
+        if message.get("role") != "assistant":
+            continue
+        message_metadata = message.get("metadata") or {}
+        if not message_metadata.get("requires_continue"):
+            continue
+
+        message["stage1"] = stage1
+        message["stage2"] = stage2
+        message["stage3"] = stage3
+        message["metadata"] = metadata or {}
+        save_conversation(conversation)
+        return True
+
+    return False
+
+
+def update_latest_assistant_stage3(
+    conversation_id: str,
+    stage3: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Update Stage 3 on the latest assistant message."""
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    for message in reversed(conversation["messages"]):
+        if message.get("role") == "assistant":
+            message["stage3"] = stage3
+            if metadata is not None:
+                message["metadata"] = metadata
+            save_conversation(conversation)
+            return True
+
+    return False
 
 
 def update_conversation_title(conversation_id: str, title: str):

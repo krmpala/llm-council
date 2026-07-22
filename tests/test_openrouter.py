@@ -16,7 +16,7 @@ async def test_query_model_with_retries_uses_exponential_backoff(monkeypatch):
     delays = []
     statuses = []
 
-    async def fake_query_once(model, messages, timeout):
+    async def fake_query_once(model, messages, timeout, max_tokens=None):
         calls.append((model, messages, timeout))
         if len(calls) < 3:
             raise _http_status_error(429)
@@ -56,7 +56,7 @@ async def test_query_model_with_retries_uses_exponential_backoff(monkeypatch):
 async def test_query_model_with_retries_does_not_retry_non_retryable_http(monkeypatch):
     calls = []
 
-    async def fake_query_once(model, messages, timeout):
+    async def fake_query_once(model, messages, timeout, max_tokens=None):
         calls.append(model)
         raise _http_status_error(400)
 

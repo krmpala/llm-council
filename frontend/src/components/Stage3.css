@@ -77,3 +77,44 @@
   color: #666;
   font-size: 14px;
 }
+
+.chairman-error,
+.quality-warning {
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.chairman-error {
+  display: grid;
+  gap: 6px;
+  background: #fff8f8;
+  border: 1px solid #f0c0c0;
+  color: #8f2c2c;
+}
+
+.quality-warning {
+  margin-bottom: 12px;
+  background: #fffaf0;
+  border: 1px solid #f0d59a;
+  color: #5f4300;
+}
+
+.retry-chairman-button {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 9px 12px;
+  background: #4a90e2;
+  border: 1px solid #4a90e2;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.retry-chairman-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

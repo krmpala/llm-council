@@ -144,12 +144,7 @@ function App() {
         updateAssistantMessage(assistantIndex, (msg) => ({
           ...msg,
           blockedMessage: event.message,
-          stage3: {
-            model: 'system',
-            provider: 'system',
-            model_name: 'minimum-participant-check',
-            response: event.message,
-          },
+          stage3: null,
           metadata: {
             ...msg.metadata,
             ...(event.metadata || {}),
@@ -163,6 +158,38 @@ function App() {
           ...msg,
           needsContinue: false,
           loading: { ...msg.loading, stage2: true },
+        }));
+        break;
+
+      case 'peer_evaluator_started':
+      case 'peer_evaluator_retrying':
+      case 'peer_evaluator_completed':
+      case 'peer_evaluator_failed':
+      case 'peer_evaluator_invalid':
+        updateAssistantMessage(assistantIndex, (msg) => ({
+          ...msg,
+          metadata: {
+            ...msg.metadata,
+            peer_evaluator_statuses: upsertModelStatus(
+              msg.metadata?.peer_evaluator_statuses,
+              event.data
+            ),
+          },
+        }));
+        break;
+
+      case 'peer_stage_completed':
+      case 'peer_stage_blocked':
+      case 'peer_stage_failed':
+        updateAssistantMessage(assistantIndex, (msg) => ({
+          ...msg,
+          metadata: {
+            ...msg.metadata,
+            peer_stage_summary: event.data?.summary || event.data || {},
+            peer_evaluator_statuses:
+              event.data?.statuses || msg.metadata?.peer_evaluator_statuses || [],
+          },
+          loading: { ...msg.loading, stage2: false },
         }));
         break;
 
@@ -189,6 +216,10 @@ function App() {
         updateAssistantMessage(assistantIndex, (msg) => ({
           ...msg,
           stage3: event.data,
+          metadata: {
+            ...msg.metadata,
+            ...(event.metadata || {}),
+          },
           loading: { ...msg.loading, stage3: false },
         }));
         break;
@@ -288,6 +319,7 @@ function App() {
         content,
         message.stage1,
         message.metadata?.stage1_statuses || [],
+        message.metadata?.constraints || {},
         (eventType, event) => handleCouncilEvent(eventType, event, messageIndex)
       );
     } catch (error) {
@@ -296,6 +328,74 @@ function App() {
         ...msg,
         needsContinue: true,
         loading: { ...msg.loading, stage2: false, stage3: false },
+      }));
+      setIsLoading(false);
+    }
+  };
+
+  const handleRetryChairman = async (messageIndex) => {
+    if (!currentConversationId || isLoading) return;
+
+    const message = currentConversation.messages[messageIndex];
+    const previousUserMessage = currentConversation.messages
+      .slice(0, messageIndex)
+      .findLast((msg) => msg.role === 'user');
+    const content = message.userQuery || previousUserMessage?.content;
+    if (!content || !message.stage1 || !message.stage2) return;
+
+    setIsLoading(true);
+    try {
+      updateAssistantMessage(messageIndex, (msg) => ({
+        ...msg,
+        loading: { ...msg.loading, stage3: true },
+      }));
+      await api.retryChairmanStream(
+        currentConversationId,
+        content,
+        message.stage1,
+        message.stage2,
+        message.metadata || {},
+        (eventType, event) => handleCouncilEvent(eventType, event, messageIndex)
+      );
+    } catch (error) {
+      console.error('Failed to retry chairman:', error);
+      updateAssistantMessage(messageIndex, (msg) => ({
+        ...msg,
+        loading: { ...msg.loading, stage3: false },
+      }));
+      setIsLoading(false);
+    }
+  };
+
+  const handleRetryPeerEvaluations = async (messageIndex) => {
+    if (!currentConversationId || isLoading) return;
+
+    const message = currentConversation.messages[messageIndex];
+    const previousUserMessage = currentConversation.messages
+      .slice(0, messageIndex)
+      .findLast((msg) => msg.role === 'user');
+    const content = message.userQuery || previousUserMessage?.content;
+    if (!content || !message.stage1) return;
+
+    setIsLoading(true);
+    try {
+      updateAssistantMessage(messageIndex, (msg) => ({
+        ...msg,
+        loading: { ...msg.loading, stage2: true },
+      }));
+      await api.retryPeerEvaluationsStream(
+        currentConversationId,
+        content,
+        message.stage1,
+        message.stage2 || [],
+        message.metadata || {},
+        (eventType, event) => handleCouncilEvent(eventType, event, messageIndex)
+      );
+    } catch (error) {
+      console.error('Failed to retry peer evaluations:', error);
+      updateAssistantMessage(messageIndex, (msg) => ({
+        ...msg,
+        loading: { ...msg.loading, stage2: false },
       }));
       setIsLoading(false);
     }
@@ -313,6 +413,8 @@ function App() {
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
         onContinueCouncil={handleContinueCouncil}
+        onRetryChairman={handleRetryChairman}
+        onRetryPeerEvaluations={handleRetryPeerEvaluations}
         isLoading={isLoading}
       />
     </div>

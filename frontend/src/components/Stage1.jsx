@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { displayModelName, statusLabel } from '../councilUi';
+import {
+  displayModelName,
+  modelFailureDetails,
+  statusLabel,
+  uniqueByMemberId,
+} from '../councilUi';
 import './Stage1.css';
 
 export default function Stage1({ responses = [], statuses = [], summary }) {
@@ -10,7 +15,9 @@ export default function Stage1({ responses = [], statuses = [], summary }) {
     return null;
   }
 
-  const activeResponse = responses[activeTab];
+  const uniqueResponses = uniqueByMemberId(responses, 'stage1 responses');
+  const uniqueStatuses = uniqueByMemberId(statuses, 'stage1 statuses');
+  const activeResponse = uniqueResponses[activeTab];
 
   return (
     <div className="stage stage1">
@@ -24,10 +31,15 @@ export default function Stage1({ responses = [], statuses = [], summary }) {
       )}
 
       <div className="model-status-list">
-        {statuses.map((status) => (
-          <div key={status.model} className={`model-status ${status.status}`}>
+        {uniqueStatuses.map((status) => (
+          <div key={status.member_id} className={`model-status ${status.status}`}>
             <div>
               <div className="model-status-name">{displayModelName(status)}</div>
+              {status.used_fallback && (
+                <div className="fallback-note">
+                  Fallback kullanıldı: {displayModelName(status)}
+                </div>
+              )}
               {status.error && (
                 <div className="model-error">
                   {status.error.http_status ? `HTTP ${status.error.http_status}: ` : ''}
@@ -40,12 +52,12 @@ export default function Stage1({ responses = [], statuses = [], summary }) {
         ))}
       </div>
 
-      {responses.length > 0 && (
+      {uniqueResponses.length > 0 && (
         <>
           <div className="tabs">
-            {responses.map((resp, index) => (
+            {uniqueResponses.map((resp, index) => (
               <button
-                key={resp.model}
+                key={resp.member_id}
                 className={`tab ${activeTab === index ? 'active' : ''}`}
                 onClick={() => setActiveTab(index)}
               >
@@ -55,10 +67,21 @@ export default function Stage1({ responses = [], statuses = [], summary }) {
           </div>
 
           <div className="tab-content">
-            <div className="model-name">{displayModelName(activeResponse)}</div>
-            <div className="response-text markdown-content">
-              <ReactMarkdown>{activeResponse.response}</ReactMarkdown>
-            </div>
+            {activeResponse ? (
+              <>
+                <div className="model-name">{displayModelName(activeResponse)}</div>
+                {activeResponse.truncated && (
+                  <div className="minimum-warning">Yanıt token sınırında kesildi.</div>
+                )}
+                <div className="response-text markdown-content">
+                  <ReactMarkdown>{activeResponse.response}</ReactMarkdown>
+                </div>
+              </>
+            ) : (
+              <div className="minimum-warning">
+                Bu sekme için eşleşen member_id bulunamadı.
+              </div>
+            )}
           </div>
         </>
       )}

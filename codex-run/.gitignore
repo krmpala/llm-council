@@ -1,0 +1,7 @@
+# Runtime-only autonomous supervisor files
+logs/
+supervisor.log
+last-verification.log
+codex-doctor.log
+STOP
+PAUSE

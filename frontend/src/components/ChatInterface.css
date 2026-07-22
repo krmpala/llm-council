@@ -130,6 +130,17 @@
   color: #8f2c2c;
 }
 
+.override-note {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: #f0f7ff;
+  border: 1px solid #c8dcf7;
+  border-radius: 6px;
+  color: #2a5f9e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .spinner {
   width: 20px;
   height: 20px;

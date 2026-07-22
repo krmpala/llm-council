@@ -1,0 +1,67 @@
+.council-blocked-panel {
+  margin: 16px 0;
+  padding: 16px;
+  background: #fff8f8;
+  border: 1px solid #f0c0c0;
+  border-radius: 8px;
+  color: #333;
+}
+
+.council-blocked-panel h3 {
+  margin: 0 0 8px 0;
+  color: #8f2c2c;
+  font-size: 16px;
+}
+
+.council-blocked-panel p {
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.blocked-failures {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.blocked-failures h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #8f2c2c;
+}
+
+.blocked-failure {
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #f0d0d0;
+  border-radius: 6px;
+}
+
+.blocked-failure-name {
+  color: #333;
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.blocked-failure-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  color: #8f2c2c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.blocked-failure-error {
+  margin-top: 4px;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.blocked-actions {
+  margin-top: 12px;
+  color: #5f4300;
+  font-size: 14px;
+}
