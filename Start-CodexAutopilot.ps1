@@ -133,9 +133,10 @@ try {
 
     # Diagnostics are informative; a failure does not destroy the loop.
     try {
-        codex doctor *>&1 | Tee-Object -FilePath (Join-Path $runDir "codex-doctor.log")
-    } catch {
-        Write-Log "codex doctor reported an issue: $($_.Exception.Message)"
+        codex --version *>&1 | Tee-Object -FilePath (Join-Path $runDir "codex-version.log")
+    }
+    catch {
+        Write-Log "Codex version check reported an issue: $($_.Exception.Message)"
     }
 
     $iteration = 0
@@ -166,10 +167,9 @@ try {
         $verificationPath = Join-Path $cycleDir "verification.log"
 
         $templateText = Get-Content -Raw $cycleTemplate
-        $cyclePrompt = $templateText.
-            Replace("{{ITERATION}}", [string]$iteration).
-            Replace("{{PROJECT_PATH}}", $ProjectPath).
-            Replace("{{TIMESTAMP}}", (Get-Date -Format o))
+        $cyclePrompt = $templateText.Replace("{{ITERATION}}", [string]$iteration)
+        $cyclePrompt = $cyclePrompt.Replace("{{PROJECT_PATH}}", $ProjectPath)
+        $cyclePrompt = $cyclePrompt.Replace("{{TIMESTAMP}}", (Get-Date -Format o))
         $cyclePrompt | Set-Content $promptPath -Encoding UTF8
 
         $headBefore = git rev-parse HEAD
@@ -181,7 +181,6 @@ try {
         try {
             Get-Content -Raw $promptPath |
                 & codex exec `
-                    --cd $ProjectPath `
                     --sandbox workspace-write `
                     --json `
                     --output-schema $schemaPath `
@@ -229,17 +228,20 @@ try {
         $statusAfter = git status --porcelain
         $allVerificationPassed = -not ($verifyResults | Where-Object { $_ -ne 0 })
 
-        @"
-
-## Supervisor cycle $iteration — $(Get-Date -Format o)
-
-- Codex exit code: $codexExit
-- HEAD before: $headBefore
-- HEAD after: $headAfter
-- Independent full verification passed: $allVerificationPassed
-- Final report: `codex-run/logs/$(Split-Path $cycleDir -Leaf)/final.json`
-- Verification log: `codex-run/logs/$(Split-Path $cycleDir -Leaf)/verification.log`
-"@ | Add-Content $reportPath -Encoding UTF8
+        $cycleLeaf = Split-Path $cycleDir -Leaf
+        $reportEntry = @(
+            ""
+            ("## Supervisor cycle {0} - {1}" -f $iteration, (Get-Date -Format o))
+            ""
+            ("- Codex exit code: {0}" -f $codexExit)
+            ("- HEAD before: {0}" -f $headBefore)
+            ("- HEAD after: {0}" -f $headAfter)
+            ("- Independent full verification passed: {0}" -f $allVerificationPassed)
+            ("- Final report: codex-run/logs/{0}/final.json" -f $cycleLeaf)
+            ("- Verification log: codex-run/logs/{0}/verification.log" -f $cycleLeaf)
+            ""
+        ) -join [Environment]::NewLine
+        Add-Content -Path $reportPath -Value $reportEntry -Encoding UTF8
 
         if ($AutoPush -and $allVerificationPassed -and ($headAfter -ne $headBefore)) {
             Write-Log "Verified commit detected; attempting git push origin HEAD."
