@@ -10,7 +10,16 @@ import json
 import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council import (
+    build_metadata,
+    calculate_aggregate_rankings,
+    generate_conversation_title,
+    run_full_council,
+    stage1_collect_responses_detailed,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+)
+from .config import COUNCIL_MODELS, MIN_SUCCESSFUL_RESPONSES
 
 app = FastAPI(title="LLM Council API")
 
@@ -32,6 +41,13 @@ class CreateConversationRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
+
+
+class ContinueCouncilRequest(BaseModel):
+    """Request to continue after one or more council members failed."""
+    content: str
+    stage1: List[Dict[str, Any]]
+    stage1_statuses: List[Dict[str, Any]] = []
 
 
 class ConversationMetadata(BaseModel):
@@ -111,7 +127,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         conversation_id,
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        metadata
     )
 
     # Return the complete response with metadata
@@ -121,6 +138,48 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         "stage3": stage3_result,
         "metadata": metadata
     }
+
+
+async def stream_remaining_council_events(
+    conversation_id: str,
+    user_query: str,
+    stage1_results: List[Dict[str, Any]],
+    stage1_statuses: List[Dict[str, Any]],
+):
+    """Yield SSE payloads for Stage 2 and Stage 3, then persist the message."""
+    yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+    metadata = build_metadata(
+        label_to_model=label_to_model,
+        aggregate_rankings=aggregate_rankings,
+        stage1_statuses=stage1_statuses,
+        stage1_summary={
+            "successful": len(stage1_results),
+            "failed": max(len(COUNCIL_MODELS) - len(stage1_results), 0),
+            "total": len(COUNCIL_MODELS),
+            "minimum_required": MIN_SUCCESSFUL_RESPONSES,
+            "blocked": False,
+            "can_continue": True,
+            "requires_continue": False,
+            "message": "The council continued with the available successful members.",
+        },
+        requires_continue=False,
+    )
+    yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
+
+    yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+    stage3_result = await stage3_synthesize_final(user_query, stage1_results, stage2_results)
+    yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+
+    storage.add_assistant_message(
+        conversation_id,
+        stage1_results,
+        stage2_results,
+        stage3_result,
+        metadata
+    )
+    yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
@@ -148,20 +207,86 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 title_task = asyncio.create_task(generate_conversation_title(request.content))
 
             # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+            pending_statuses = [
+                {
+                    "model": model,
+                    "provider": model.split("/", 1)[0],
+                    "model_name": model.split("/", 1)[1] if "/" in model else model,
+                    "status": "pending",
+                    "attempts": 0,
+                    "response": None,
+                    "error": None,
+                }
+                for model in COUNCIL_MODELS
+            ]
+            yield f"data: {json.dumps({'type': 'stage1_start', 'metadata': {'stage1_statuses': pending_statuses, 'minimum_required': MIN_SUCCESSFUL_RESPONSES}})}\n\n"
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+            status_queue = asyncio.Queue()
 
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+            async def status_callback(status):
+                await status_queue.put(status)
+
+            stage1_task = asyncio.create_task(
+                stage1_collect_responses_detailed(request.content, status_callback=status_callback)
+            )
+
+            while not stage1_task.done():
+                try:
+                    status = await asyncio.wait_for(status_queue.get(), timeout=0.2)
+                    yield f"data: {json.dumps({'type': 'model_status', 'data': status})}\n\n"
+                except asyncio.TimeoutError:
+                    continue
+
+            stage1_details = await stage1_task
+            while not status_queue.empty():
+                status = await status_queue.get()
+                yield f"data: {json.dumps({'type': 'model_status', 'data': status})}\n\n"
+
+            metadata = build_metadata(
+                stage1_statuses=stage1_details["statuses"],
+                stage1_summary=stage1_details["summary"],
+                requires_continue=stage1_details["summary"]["requires_continue"],
+            )
+            stage1_results = stage1_details["responses"]
+            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results, 'metadata': metadata})}\n\n"
+
+            if stage1_details["summary"]["blocked"]:
+                stage3_result = {
+                    "model": "error",
+                    "provider": "system",
+                    "model_name": "minimum-participant-check",
+                    "response": stage1_details["summary"]["message"],
+                }
+                yield f"data: {json.dumps({'type': 'council_blocked', 'message': stage1_details['summary']['message'], 'metadata': metadata})}\n\n"
+                storage.add_assistant_message(
+                    conversation_id,
+                    stage1_results,
+                    [],
+                    stage3_result,
+                    metadata,
+                )
+                if title_task:
+                    title = await title_task
+                    storage.update_conversation_title(conversation_id, title)
+                    yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+                return
+
+            if stage1_details["summary"]["requires_continue"]:
+                if title_task:
+                    title = await title_task
+                    storage.update_conversation_title(conversation_id, title)
+                    yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                yield f"data: {json.dumps({'type': 'continue_required', 'message': stage1_details['summary']['message'], 'metadata': metadata})}\n\n"
+                return
+
+            async for event in stream_remaining_council_events(
+                conversation_id,
+                request.content,
+                stage1_results,
+                stage1_details["statuses"],
+            ):
+                yield event
 
             # Wait for title generation if it was started
             if title_task:
@@ -169,19 +294,48 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 storage.update_conversation_title(conversation_id, title)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
-            # Save complete assistant message
-            storage.add_assistant_message(
-                conversation_id,
-                stage1_results,
-                stage2_results,
-                stage3_result
-            )
-
-            # Send completion event
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
-
         except Exception as e:
             # Send error event
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.post("/api/conversations/{conversation_id}/message/continue/stream")
+async def continue_message_stream(conversation_id: str, request: ContinueCouncilRequest):
+    """
+    Continue Stage 2 and Stage 3 after failed models have been acknowledged.
+    """
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if len(request.stage1) < MIN_SUCCESSFUL_RESPONSES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"At least {MIN_SUCCESSFUL_RESPONSES} successful responses are "
+                "required before continuing."
+            ),
+        )
+
+    async def event_generator():
+        try:
+            async for event in stream_remaining_council_events(
+                conversation_id,
+                request.content,
+                request.stage1,
+                request.stage1_statuses,
+            ):
+                yield event
+        except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(

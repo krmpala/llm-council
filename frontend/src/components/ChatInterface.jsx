@@ -8,6 +8,7 @@ import './ChatInterface.css';
 export default function ChatInterface({
   conversation,
   onSendMessage,
+  onContinueCouncil,
   isLoading,
 }) {
   const [input, setInput] = useState('');
@@ -79,7 +80,33 @@ export default function ChatInterface({
                       <span>Running Stage 1: Collecting individual responses...</span>
                     </div>
                   )}
-                  {msg.stage1 && <Stage1 responses={msg.stage1} />}
+                  {(msg.stage1 || msg.metadata?.stage1_statuses) && (
+                    <Stage1
+                      responses={msg.stage1 || []}
+                      statuses={msg.metadata?.stage1_statuses || []}
+                      summary={msg.metadata?.stage1_summary}
+                    />
+                  )}
+
+                  {msg.needsContinue && (
+                    <div className="continue-panel">
+                      <p>{msg.continueMessage}</p>
+                      <button
+                        type="button"
+                        className="continue-button"
+                        onClick={() => onContinueCouncil(index)}
+                        disabled={isLoading}
+                      >
+                        Konseyi kalan üyelerle devam ettir
+                      </button>
+                    </div>
+                  )}
+
+                  {msg.blockedMessage && (
+                    <div className="blocked-panel">
+                      {msg.blockedMessage}
+                    </div>
+                  )}
 
                   {/* Stage 2 */}
                   {msg.loading?.stage2 && (
@@ -103,7 +130,14 @@ export default function ChatInterface({
                       <span>Running Stage 3: Final synthesis...</span>
                     </div>
                   )}
-                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                  {msg.stage3 && (
+                    <Stage3
+                      finalResponse={msg.stage3}
+                      stage1Responses={msg.stage1}
+                      stage2Rankings={msg.stage2}
+                      labelToModel={msg.metadata?.label_to_model}
+                    />
+                  )}
                 </div>
               )}
             </div>

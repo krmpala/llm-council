@@ -89,27 +89,62 @@ export const api = {
       throw new Error('Failed to send message');
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
+    await readSseStream(response, onEvent);
+  },
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
-          }
-        }
+  /**
+   * Continue a paused council run after failed members are acknowledged.
+   */
+  async continueMessageStream(conversationId, content, stage1, stage1Statuses, onEvent) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/message/continue/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content,
+          stage1,
+          stage1_statuses: stage1Statuses || [],
+        }),
       }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to continue council');
     }
+
+    await readSseStream(response, onEvent);
   },
 };
+
+async function readSseStream(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const rawEvent of events) {
+      const line = rawEvent
+        .split('\n')
+        .find((eventLine) => eventLine.startsWith('data: '));
+      if (!line) continue;
+
+      const data = line.slice(6);
+      try {
+        const event = JSON.parse(data);
+        onEvent(event.type, event);
+      } catch (e) {
+        console.error('Failed to parse SSE event:', e);
+      }
+    }
+  }
+}

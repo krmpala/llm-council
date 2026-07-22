@@ -10,6 +10,34 @@
   border: 1px solid #c8e6c8;
 }
 
+.final-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.final-tab {
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid #c8e6c8;
+  border-radius: 6px;
+  color: #376b37;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.final-tab:hover {
+  background: #f7fff7;
+}
+
+.final-tab.active {
+  background: #2d8a2d;
+  border-color: #2d8a2d;
+  color: #ffffff;
+}
+
 .chairman-label {
   color: #2d8a2d;
   font-size: 12px;
@@ -22,4 +50,30 @@
   color: #333;
   line-height: 1.7;
   font-size: 15px;
+}
+
+.final-list {
+  display: grid;
+  gap: 14px;
+}
+
+.final-list-item {
+  padding: 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.final-list-title {
+  margin-bottom: 8px;
+  color: #2d8a2d;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.empty-tab {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
 }
