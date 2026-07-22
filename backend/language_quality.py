@@ -165,7 +165,7 @@ def detect_language(text: str) -> Dict[str, Any]:
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     best_code, best_score = ranked[0]
     second_score = ranked[1][1]
-    if best_score == 0:
+    if best_score == 0 or best_score < 2:
         return {"code": "unknown", "confidence": 0.0, "languages": [], "scripts": scripts}
     confidence = round(best_score / max(best_score + second_score, 1), 3)
     if best_score < 2 and len(tokens) > 6:

@@ -303,7 +303,7 @@ def test_short_request_extracts_structured_length_and_prompt_limit():
 
 
 @pytest.mark.asyncio
-async def test_finish_reason_length_marks_response_truncated(monkeypatch):
+async def test_unrepaired_finish_reason_length_is_not_successful(monkeypatch):
     members = [{"member_id": "member-1", "primary_model": "openai/a", "fallback_models": []}]
 
     async def fake_query(model, messages, **kwargs):
@@ -316,8 +316,10 @@ async def test_finish_reason_length_marks_response_truncated(monkeypatch):
 
     result = await council.stage1_collect_responses_detailed("Kısa cevap")
 
-    assert result["responses"][0]["truncated"] is True
-    assert result["responses"][0]["finish_reason"] == "length"
+    assert result["responses"] == []
+    assert result["statuses"][0]["status"] == "failed"
+    assert result["statuses"][0]["truncated"] is True
+    assert result["statuses"][0]["error"]["type"] == "quality_validation_failed"
 
 
 @pytest.mark.asyncio

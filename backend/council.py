@@ -282,190 +282,8 @@ def _stage1_summary(
     }
 
 
-def _has_turkish_signal(text: str) -> bool:
-    lowered = text.lower()
-    turkish_chars = set("çğıöşüİ")
-    common_words = {
-        "bir", "ve", "ile", "için", "nedir", "nasıl", "neden", "hangi",
-        "mı", "mi", "mu", "mü", "değil", "lütfen", "cevap", "kısa",
-    }
-    words = set(re.findall(r"\b[\wçğıöşüİ]+\b", lowered, re.IGNORECASE))
-    return any(char in text for char in turkish_chars) or len(words & common_words) >= 2
-
-
-def extract_user_constraints(user_query: str) -> Dict[str, Any]:
-    lowered = user_query.lower()
-
-    if _has_turkish_signal(user_query) or "türkçe" in lowered:
-        requested_language = "Turkish"
-    elif "english" in lowered or "ingilizce" in lowered:
-        requested_language = "English"
-    else:
-        requested_language = None
-
-    length_match = re.search(r"(\d+)\s*(kelime|word|cümle|sentence|paragraf|paragraph)", lowered)
-    if length_match:
-        requested_length = length_match.group(0)
-    elif any(marker in lowered for marker in ["kısa", "özet", "brief", "short", "concise"]):
-        requested_length = "short"
-    elif any(marker in lowered for marker in ["detaylı", "kapsamlı", "detailed", "comprehensive"]):
-        requested_length = "detailed"
-    else:
-        requested_length = None
-
-    budget_match = re.search(
-        r"(\$|€|₺|tl|usd|eur)\s?\d[\d.,]*|\d[\d.,]*\s?(\$|€|₺|tl|usd|eur|lira)",
-        lowered,
-    )
-
-    geography_match = re.search(
-        r"\b(türkiye|turkey|istanbul|ankara|izmir|abd|usa|united states|avrupa|europe)\b",
-        lowered,
-    )
-
-    format_markers = []
-    for marker in ["json", "tablo", "table", "liste", "madde", "markdown", "csv"]:
-        if marker in lowered:
-            format_markers.append(marker)
-
-    exclusions = []
-    for pattern in [
-        r"([^.!?\n]+)\s+istemiyorum",
-        r"([^.!?\n]+)\s+olmasın",
-        r"without\s+([^.!?\n]+)",
-        r"exclude\s+([^.!?\n]+)",
-        r"hariç\s+([^.!?\n]+)",
-    ]:
-        exclusions.extend(match.strip() for match in re.findall(pattern, lowered))
-
-    return {
-        "requested_language": requested_language,
-        "requested_length": requested_length,
-        "budget_constraint": budget_match.group(0) if budget_match else None,
-        "geography": geography_match.group(0) if geography_match else None,
-        "requested_format": ", ".join(format_markers) if format_markers else None,
-        "explicit_exclusions": exclusions,
-    }
-
-
 def _constraints_text(constraints: Dict[str, Any]) -> str:
     return json.dumps(constraints, ensure_ascii=False, indent=2)
-
-
-def _language_instruction(user_query: str, constraints: Optional[Dict[str, Any]] = None) -> str:
-    constraints = constraints or extract_user_constraints(user_query)
-    if constraints.get("requested_language") == "Turkish":
-        return (
-            "Kullanıcının dili Türkçe görünüyor. Yanıtını doğal, akıcı ve "
-            "bozuk İngilizce karışımı kullanmadan Türkçe ver."
-        )
-    return "Answer in the same language as the user unless they explicitly request another language."
-
-
-def _length_instruction(user_query: str, constraints: Optional[Dict[str, Any]] = None) -> str:
-    constraints = constraints or extract_user_constraints(user_query)
-    requested_length = constraints.get("requested_length")
-    if requested_length:
-        return (
-            "Kullanıcının istediği uzunluk ve ayrıntı düzeyine uy. Açık bir "
-            "uzunluk isteği varsa onu önceliklendir."
-        )
-    return "Basit sorularda nihai cevap 500 kelimeyi geçmesin."
-
-
-def _max_tokens_for_constraints(constraints: Dict[str, Any]) -> Optional[int]:
-    requested_length = constraints.get("requested_length")
-    if requested_length == "short":
-        return 700
-    if requested_length and re.search(r"\b[1-9]\d?\s*(kelime|word|cümle|sentence)\b", requested_length):
-        return 500
-    return None
-
-
-def extract_user_constraints(user_query: str) -> Dict[str, Any]:
-    lowered = user_query.lower()
-
-    if _has_turkish_signal(user_query) or "türkçe" in lowered:
-        requested_language = "Turkish"
-    elif "english" in lowered or "ingilizce" in lowered:
-        requested_language = "English"
-    else:
-        requested_language = None
-
-    length_match = re.search(r"(\d+)\s*(kelime|word|cümle|sentence|paragraf|paragraph)", lowered)
-    explicit_word_limit = None
-    if length_match:
-        requested_length = "explicit"
-        explicit_word_limit = int(length_match.group(1))
-    elif any(marker in lowered for marker in ["çok kısa", "cok kisa", "very short"]):
-        requested_length = "very_short"
-    elif any(marker in lowered for marker in ["kısaca", "kısa", "özet", "brief", "short", "concise"]):
-        requested_length = "short"
-    elif any(marker in lowered for marker in ["detaylı", "kapsamlı", "detailed", "comprehensive", "uzun"]):
-        requested_length = "detailed"
-    else:
-        requested_length = "unrestricted"
-
-    budget_match = re.search(
-        r"(\$|€|₺|tl|usd|eur)\s?\d[\d.,]*|\d[\d.,]*\s?(\$|€|₺|tl|usd|eur|lira)",
-        lowered,
-    )
-    geography_match = re.search(
-        r"\b(türkiye|turkey|istanbul|ankara|izmir|abd|usa|united states|avrupa|europe)\b",
-        lowered,
-    )
-    format_markers = [
-        marker for marker in ["json", "tablo", "table", "liste", "madde", "markdown", "csv"]
-        if marker in lowered
-    ]
-    exclusions = []
-    for pattern in [
-        r"([^.!?\n]+)\s+istemiyorum",
-        r"([^.!?\n]+)\s+olmasın",
-        r"without\s+([^.!?\n]+)",
-        r"exclude\s+([^.!?\n]+)",
-        r"hariç\s+([^.!?\n]+)",
-    ]:
-        exclusions.extend(match.strip() for match in re.findall(pattern, lowered))
-
-    return {
-        "requested_language": requested_language,
-        "requested_length": requested_length,
-        "explicit_word_limit": explicit_word_limit,
-        "budget_constraint": budget_match.group(0) if budget_match else None,
-        "geography": geography_match.group(0) if geography_match else None,
-        "requested_format": ", ".join(format_markers) if format_markers else None,
-        "explicit_exclusions": exclusions,
-    }
-
-
-def _length_instruction(user_query: str, constraints: Optional[Dict[str, Any]] = None) -> str:
-    constraints = constraints or extract_user_constraints(user_query)
-    requested_length = constraints.get("requested_length")
-    if requested_length == "very_short":
-        return "En fazla 120 kelime kullan. Kısa bir kapanış cümlesiyle bitir."
-    if requested_length == "short":
-        return "En fazla 250 kelime kullan. Gereksiz ayrıntı ekleme ve cümle ortasında bırakma."
-    if requested_length == "medium":
-        return "Yaklaşık 400-600 kelime kullan."
-    if requested_length == "detailed":
-        return "Gerekçeli ve kapsamlı yanıt ver."
-    if requested_length == "explicit" and constraints.get("explicit_word_limit"):
-        return f"En fazla {constraints['explicit_word_limit']} kelime kullan."
-    return "Basit sorularda nihai cevap 500 kelimeyi geçmesin."
-
-
-def _max_tokens_for_constraints(constraints: Dict[str, Any]) -> Optional[int]:
-    requested_length = constraints.get("requested_length")
-    if requested_length == "very_short":
-        return 512
-    if requested_length == "short":
-        return 900
-    if requested_length == "medium":
-        return 1800
-    if requested_length == "explicit" and constraints.get("explicit_word_limit"):
-        return max(512, int(constraints["explicit_word_limit"] * 4))
-    return None
 
 
 def extract_user_constraints(
@@ -524,23 +342,43 @@ def extract_user_constraints(
 
 def _language_instruction(user_query: str, constraints: Optional[Dict[str, Any]] = None) -> str:
     del user_query
-    return target_language_instruction(constraints or {})
+    constraints = constraints or {}
+    instruction = target_language_instruction(constraints)
+    if constraints.get("requested_language_code") == "tr":
+        return (
+            "If the user language is Turkish, write natural Turkish and avoid broken English mixtures. "
+            f"{instruction}"
+        )
+    return instruction
 
 
 def _length_instruction(user_query: str, constraints: Optional[Dict[str, Any]] = None) -> str:
     del user_query
     constraints = constraints or {}
     requested_length = constraints.get("requested_length")
+    is_turkish = constraints.get("requested_language_code") == "tr"
     if requested_length == "very_short":
+        if is_turkish:
+            return "En fazla 120 kelime kullan ve tam bir kapanış cümlesiyle bitir."
         return "Use at most 120 words and end with a complete closing sentence."
     if requested_length == "short":
+        if is_turkish:
+            return "En fazla 250 kelime kullan. Gereksiz ayrıntı ekleme ve cümle ortasında bırakma."
         return "Use at most 250 words. Avoid unnecessary detail and do not stop mid-sentence."
     if requested_length == "medium":
+        if is_turkish:
+            return "Yaklaşık 400-600 kelime kullan."
         return "Use approximately 400 to 600 words."
     if requested_length == "detailed":
+        if is_turkish:
+            return "Gerekçeli ve kapsamlı yanıt ver."
         return "Provide a reasoned and thorough answer."
     if requested_length == "explicit" and constraints.get("explicit_word_limit"):
+        if is_turkish:
+            return f"En fazla {constraints['explicit_word_limit']} kelime kullan."
         return f"Use at most {constraints['explicit_word_limit']} words."
+    if is_turkish:
+        return "Basit sorularda nihai cevap 500 kelimeyi geçmesin."
     return "Keep the final answer below 500 words for simple questions."
 
 

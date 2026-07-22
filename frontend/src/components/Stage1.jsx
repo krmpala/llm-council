@@ -2,7 +2,6 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   displayModelName,
-  modelFailureDetails,
   statusLabel,
   uniqueByMemberId,
 } from '../councilUi';
