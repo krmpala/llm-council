@@ -1,35 +1,30 @@
 ﻿# Autonomous cycle {{ITERATION}}
 
-You are one iteration of a supervised continuous Codex workflow.
+Repository: {{PROJECT_PATH}}
+Timestamp: {{TIMESTAMP}}
 
-Repository root: `{{PROJECT_PATH}}`
-Current timestamp: `{{TIMESTAMP}}`
+Obey codex-run/AUTONOMOUS_AGENT_PROMPT.md.
 
-Read `codex-run/AUTONOMOUS_AGENT_PROMPT.md` first and obey it.
-Then inspect:
+IMPORTANT WINDOWS RULE:
+- Use `Get-Content -Encoding UTF8`; never use plain `Get-Content`.
+- Do not print entire large files.
+- Use `rg` to locate symbols and inspect only relevant 200-300 line ranges.
+- Keep all JSON progress summaries clear and understandable in Turkish.
 
-- `codex-run/AUTONOMOUS_STATE.md`
-- `codex-run/BACKLOG.md`
-- `codex-run/last-verification.log` if present
-- `git status --short`
-- `git log -8 --oneline`
+Read the current phase/state/backlog, git status, recent commits, and last
+verification result. Complete exactly one highest-priority bounded work package.
 
-Complete exactly one highest-priority bounded work package.
+Do not ask for user input. Do not touch AGENTS.md. Do not merge to master/main.
+Do not expose secrets or use live paid calls. Commit only coherent tested work.
+If blocked, document the exact blocker and continue with another safe bounded
+task where possible. End with valid JSON matching the configured schema.
 
-Important:
-- Continue partially completed edits; do not discard them.
-- Do not ask for user input.
-- Do not add research features until Phase 0 and Phase 1 gates pass.
-- Do not merge or modify `master`.
-- Do not expose secrets or use live paid provider calls.
-- Run focused tests and then relevant full checks.
-- Commit only a coherent tested change.
-- Update autonomous state/report/backlog before finishing.
-- If blocked, document it and choose another safe bounded task where possible.
-- If the roadmap is already stable, perform a review/evaluation cycle rather than inventing a feature.
-- Büyük dosyaları Get-Content -Raw ile tamamen okuma.
-- Önce rg ile ilgili fonksiyonları ve satırları bul.
-- Dosyaları en fazla 200-300 satırlık bölümler halinde incele.
-- Bir turda tüm repository'yi tekrar tekrar bağlama yükleme.
-- AUTONOMOUS_AGENT_PROMPT.md daha önce okunmuşsa yalnızca mevcut fazın ilgili bölümünü incele.
-- Tek turda bir sınırlı kod değişikliği ve onun testlerine odaklan.
+
+UNATTENDED REPAIR LOOP:
+- A failing test is not a reason to stop. Treat it as the next repair input.
+- Read codex-run/last-verification.log first.
+- Fix the smallest coherent cluster of failures.
+- If one approach fails, record why and try a safer alternative in the next cycle.
+- Never wait for user confirmation.
+- Do not merely report test failures; make a concrete repair attempt.
+- Keep going until the current phase gate is green.

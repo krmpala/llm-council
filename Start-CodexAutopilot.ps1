@@ -2,7 +2,7 @@
     [string]$ProjectPath = "C:\Users\Pala\Documents\llm-council",
     [int]$DefaultSleepSeconds = 45,
     [int]$StableSleepSeconds = 900,
-    [int]$FailureSleepSeconds = 90,
+    [int]$FailureSleepSeconds = 20,
     [switch]$AutoPush,
     [switch]$Once,
     [switch]$VerifyOnly
@@ -388,36 +388,19 @@ $issuesPath = Join-Path $runDir "KNOWN_ISSUES.md"
 $stopPath = Join-Path $runDir "STOP"
 $pausePath = Join-Path $runDir "PAUSE"
 
-foreach ($required in @($masterPrompt, $cycleTemplate, $schemaPath)) {
+foreach ($required in @($masterPrompt, $cycleTemplate)) {
     if (-not (Test-Path $required)) {
         throw "Gerekli autopilot dosyasi eksik: $required"
     }
 }
 
-# Codex requires the output schema to be strict JSON without a UTF-8 BOM.
-# Windows PowerShell 5.1 commonly writes BOM-prefixed UTF-8 files, so
-# normalize and validate the schema before every run.
-try {
-    $schemaText = [System.IO.File]::ReadAllText(
-        $schemaPath,
-        [System.Text.Encoding]::UTF8
-    )
-    $null = $schemaText | ConvertFrom-Json -ErrorAction Stop
+# Output schema enforcement is intentionally disabled in V4.
+# Plain JSONL events are more resilient for unattended operation.
 
-    [System.IO.File]::WriteAllText(
-        $schemaPath,
-        $schemaText,
-        (New-Object System.Text.UTF8Encoding($false))
-    )
-}
-catch {
-    throw ("cycle-output.schema.json gecersiz JSON: {0}" -f $_.Exception.Message)
-}
-
-# Refuse to feed a visibly corrupted roadmap to Codex.
+# Warn about suspicious encoding, but never terminate unattended operation.
 $promptProbe = Get-Content -Raw -Encoding UTF8 $masterPrompt
 if ($promptProbe -match "[ÔÇ├┼─]") {
-    throw "AUTONOMOUS_AGENT_PROMPT.md karakter kodlamasi bozuk. V3 paketindeki temiz dosyayla degistir."
+    Write-Ui "UYARI" "Ana gorev dosyasinda supheli karakterler bulundu. Codex UTF-8 okuyacak ve temiz metni kopyalamamasi konusunda uyarildi."
 }
 
 if (-not (Test-Path $statePath)) {
@@ -475,8 +458,14 @@ $ES_AWAYMODE_REQUIRED = [uint32]64
 $awakeFlags = [uint32]($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED -bor $ES_AWAYMODE_REQUIRED)
 [void][AwakeStateV3]::SetThreadExecutionState($awakeFlags)
 
+# A STOP file left from an earlier run should not prevent a fresh explicit start.
+if (Test-Path $stopPath) {
+    Remove-Item $stopPath -Force -ErrorAction SilentlyContinue
+    Write-Ui "UYARI" "Eski STOP dosyasi temizlendi."
+}
+
 try {
-    Write-Ui "BASLADI" ("Codex Autopilot V3.3 basladi. Branch: {0}" -f $currentBranch)
+    Write-Ui "BASLADI" ("Codex Autopilot V4 basladi. Branch: {0}" -f $currentBranch)
     Write-Ui "BILGI" ("Durdurmak icin Ctrl+C veya {0} dosyasini olustur." -f $stopPath)
 
     # npm's codex.ps1 wrapper may write a successful status message to stderr.
@@ -537,6 +526,13 @@ try {
     $iteration = 0
     $consecutiveFailures = 0
 
+    trap {
+        Write-Ui "HATA" ("Supervisor beklenmeyen hata yakaladi: {0}" -f $_.Exception.Message)
+        Write-Ui "BEKLE" ("{0} saniye sonra yeni donguye gecilecek." -f $FailureSleepSeconds)
+        Start-Sleep -Seconds $FailureSleepSeconds
+        continue
+    }
+
     while ($true) {
         if (Test-Path $stopPath) {
             Write-Ui "BILGI" "STOP dosyasi algilandi. Guvenli bicimde cikiliyor."
@@ -582,7 +578,6 @@ try {
                 & $codexCommandPath exec `
                     --sandbox workspace-write `
                     --json `
-                    --output-schema $schemaPath `
                     --output-last-message $finalPath `
                     - 2> $stderrPath |
                 ForEach-Object {
@@ -624,8 +619,9 @@ try {
         $finalSummary = $null
 
         if (Test-Path $finalPath) {
+            $finalText = Get-Content -Raw -Encoding UTF8 $finalPath
             try {
-                $finalObject = Get-Content -Raw -Encoding UTF8 $finalPath | ConvertFrom-Json
+                $finalObject = $finalText | ConvertFrom-Json -ErrorAction Stop
                 $cycleStatus = [string]$finalObject.cycle_status
                 $finalSummary = Repair-Mojibake ([string]$finalObject.summary)
                 if ($finalObject.recommended_sleep_seconds) {
@@ -633,7 +629,8 @@ try {
                 }
             }
             catch {
-                Write-Ui "UYARI" "Codex final.json raporu okunamadi; loglar sonraki donguye birakildi."
+                $finalSummary = Repair-Mojibake $finalText
+                $cycleStatus = if ($codexExit -eq 0) { "progress" } else { "failed" }
             }
         }
 
@@ -687,9 +684,11 @@ try {
         }
         else {
             $consecutiveFailures++
+            # Test/Codex failures are expected repair inputs, not terminal errors.
+            # Retry quickly so the next agent turn can read last-verification.log.
             $sleepSeconds = [Math]::Min(
-                3600,
-                $FailureSleepSeconds * [Math]::Max(1, $consecutiveFailures)
+                120,
+                $FailureSleepSeconds + (10 * [Math]::Min($consecutiveFailures - 1, 5))
             )
         }
 

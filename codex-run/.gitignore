@@ -1,7 +1,8 @@
-# Runtime-only autonomous supervisor files
 logs/
 supervisor.log
 last-verification.log
-codex-doctor.log
+manual-verification.log
+codex-version.log
 STOP
 PAUSE
+login-status.tmp
