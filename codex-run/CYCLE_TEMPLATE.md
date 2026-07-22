@@ -27,3 +27,9 @@ Important:
 - Update autonomous state/report/backlog before finishing.
 - If blocked, document it and choose another safe bounded task where possible.
 - If the roadmap is already stable, perform a review/evaluation cycle rather than inventing a feature.
+- Büyük dosyaları Get-Content -Raw ile tamamen okuma.
+- Önce rg ile ilgili fonksiyonları ve satırları bul.
+- Dosyaları en fazla 200-300 satırlık bölümler halinde incele.
+- Bir turda tüm repository'yi tekrar tekrar bağlama yükleme.
+- AUTONOMOUS_AGENT_PROMPT.md daha önce okunmuşsa yalnızca mevcut fazın ilgili bölümünü incele.
+- Tek turda bir sınırlı kod değişikliği ve onun testlerine odaklan.

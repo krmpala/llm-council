@@ -9,6 +9,13 @@
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
+# Force UTF-8 for Codex stdin/stdout and child PowerShell processes.
+$Utf8Encoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::InputEncoding = $Utf8Encoding
+[Console]::OutputEncoding = $Utf8Encoding
+$OutputEncoding = $Utf8Encoding
+& chcp.com 65001 | Out-Null
+
 function Write-Log {
     param([string]$Message)
     $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -119,12 +126,11 @@ public static class AwakeState {
     public static extern uint SetThreadExecutionState(uint esFlags);
 }
 "@
-$ES_CONTINUOUS = [uint32]0x80000000
-$ES_SYSTEM_REQUIRED = [uint32]0x00000001
-$ES_AWAYMODE_REQUIRED = [uint32]0x00000040
-[void][AwakeState]::SetThreadExecutionState(
-    $ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED -bor $ES_AWAYMODE_REQUIRED
-)
+$ES_CONTINUOUS = [uint32]2147483648
+$ES_SYSTEM_REQUIRED = [uint32]1
+$ES_AWAYMODE_REQUIRED = [uint32]64
+$awakeFlags = [uint32]($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED -bor $ES_AWAYMODE_REQUIRED)
+[void][AwakeState]::SetThreadExecutionState($awakeFlags)
 
 try {
     Write-Log "Codex autopilot started in $ProjectPath"
@@ -166,7 +172,7 @@ try {
         $finalPath = Join-Path $cycleDir "final.json"
         $verificationPath = Join-Path $cycleDir "verification.log"
 
-        $templateText = Get-Content -Raw $cycleTemplate
+        $templateText = Get-Content -Raw -Encoding UTF8 $cycleTemplate
         $cyclePrompt = $templateText.Replace("{{ITERATION}}", [string]$iteration)
         $cyclePrompt = $cyclePrompt.Replace("{{PROJECT_PATH}}", $ProjectPath)
         $cyclePrompt = $cyclePrompt.Replace("{{TIMESTAMP}}", (Get-Date -Format o))
@@ -179,7 +185,7 @@ try {
 
         # codex exec is intentionally one bounded turn. This outer loop starts the next turn.
         try {
-            Get-Content -Raw $promptPath |
+            Get-Content -Raw -Encoding UTF8 $promptPath |
                 & codex exec `
                     --sandbox workspace-write `
                     --json `
