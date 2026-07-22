@@ -1,4 +1,4 @@
-# LLM Council Autonomous Codex Objective
+﻿# LLM Council Autonomous Codex Objective
 
 ## Mission
 

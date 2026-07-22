@@ -1,4 +1,4 @@
-# Autonomous cycle {{ITERATION}}
+﻿# Autonomous cycle {{ITERATION}}
 
 You are one iteration of a supervised continuous Codex workflow.
 

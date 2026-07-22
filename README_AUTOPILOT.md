@@ -1,4 +1,4 @@
-# Codex Autopilot Kit — Windows PowerShell
+﻿# Codex Autopilot Kit — Windows PowerShell
 
 Bu kit, tek bir uzun Codex oturumu yerine art arda kısa ve sınırlandırılmış `codex exec` turları çalıştırır.
 
